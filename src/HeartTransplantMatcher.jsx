@@ -514,11 +514,7 @@ const generatePDF = () => {
               </thead>
               <tbody>
                 {matchResults.map((result, index) => (
-                  <tr key={index} style={{
-                    backgroundColor: result.bloodTypeMatch 
-                      ? (result.riskLevel === 'High Risk' ? '#fee2e2' : '#dcfce7') 
-                      : '#e5e7eb'
-                  }}>
+                  <tr key={index}>
                     <td className="py-2 px-4 border text-center">{index + 1}</td>
                     <td className="py-2 px-4 border">{result.id}</td>
                     <td className="py-2 px-4 border">{result.name}</td>
