@@ -1,5 +1,5 @@
-// HeartTransplantMatcher.jsx
-import React, { useState, useEffect } from 'react';
+// HeartTransplantMatcher.jsx - Complete version with blood type support and PDF fixes
+import React, { useState } from 'react';
 import ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
@@ -11,14 +11,30 @@ const HeartTransplantMatcher = () => {
     gender: '',
     age: '',
     height: '',
-    weight: ''
+    weight: '',
+    bloodType: ''
   });
   const [matchResults, setMatchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [file, setFile] = useState(null);
 
-  // Calculate PHM based on formula from the uploaded document
+  // Available blood types
+  const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+  // Blood type compatibility chart (recipient can receive from donor)
+  const bloodTypeCompatibility = {
+    'A+': ['A+', 'A-', 'O+', 'O-'],
+    'A-': ['A-', 'O-'],
+    'B+': ['B+', 'B-', 'O+', 'O-'],
+    'B-': ['B-', 'O-'],
+    'AB+': ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
+    'AB-': ['A-', 'B-', 'AB-', 'O-'],
+    'O+': ['O+', 'O-'],
+    'O-': ['O-']
+  };
+
+// Calculate PHM based on formula from the uploaded document
   const calculatePHM = (gender, age, height, weight) => {
     // Convert height from cm to m if needed
     const heightInM = height > 3 ? height / 100 : height;
@@ -57,7 +73,13 @@ const HeartTransplantMatcher = () => {
     return 'Acceptable';
   };
 
-  const handleFileUpload = async (e) => {
+  // Check blood type compatibility
+  const isBloodTypeCompatible = (donorBloodType, recipientBloodType) => {
+    if (!donorBloodType || !recipientBloodType) return false;
+    return bloodTypeCompatibility[recipientBloodType]?.includes(donorBloodType) || false;
+  };
+
+const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     setFile(file);
     setError('');
@@ -99,6 +121,11 @@ const HeartTransplantMatcher = () => {
         setIsLoading(false);
         return;
       }
+
+      // Warn if bloodType column is missing
+      if (!headers.includes('bloodtype')) {
+        setError('Warning: No "bloodType" column found. Blood type matching will be disabled.');
+      }
       
       // Convert rows to JSON
       worksheet.eachRow((row, rowNumber) => {
@@ -109,6 +136,12 @@ const HeartTransplantMatcher = () => {
           const header = headers[colNumber - 1];
           rowData[header] = cell.value;
         });
+        
+        // Normalize the blood type field name
+        if (rowData.bloodtype && !rowData.bloodType) {
+          rowData.bloodType = rowData.bloodtype;
+          delete rowData.bloodtype;
+        }
         
         jsonData.push(rowData);
       });
@@ -122,8 +155,8 @@ const HeartTransplantMatcher = () => {
       setRecipients(jsonData);
       setIsLoading(false);
     } catch (err) {
-      setError('Error processing file. Please ensure it is a valid Excel file.');
-      console.error(err);
+      console.error('File processing error:', err);
+      setError(`Error processing file: ${err.message || 'Unknown error'}`);
       setIsLoading(false);
     }
   };
@@ -132,10 +165,10 @@ const HeartTransplantMatcher = () => {
     const { name, value } = e.target;
     setDonor(prev => ({ ...prev, [name]: value }));
   };
-
+  
   const handleCalculateMatches = () => {
     // Validate donor data
-    const donorFields = ['name', 'gender', 'age', 'height', 'weight'];
+    const donorFields = ['name', 'gender', 'age', 'height', 'weight', 'bloodType'];
     const missingFields = donorFields.filter(field => !donor[field]);
     
     if (missingFields.length) {
@@ -171,7 +204,7 @@ const HeartTransplantMatcher = () => {
       
       // Calculate match for each recipient
       const results = recipients.map(recipient => {
-        // Validate recipient data
+        // Calculate recipient PHM
         const recipientPHM = calculatePHM(
           recipient.gender,
           parseFloat(recipient.age),
@@ -183,19 +216,38 @@ const HeartTransplantMatcher = () => {
         const matchCategory = determineMatchCategory(phmRatio);
         const riskLevel = determineRiskLevel(phmRatio);
         
+        // Check blood type compatibility
+        const bloodTypeMatch = isBloodTypeCompatible(donor.bloodType, recipient.bloodType);
+        const exactBloodTypeMatch = donor.bloodType === recipient.bloodType;
+        
         return {
           ...recipient,
           donorPHM,
           recipientPHM,
           phmRatio,
           matchCategory,
-          riskLevel
+          riskLevel,
+          bloodTypeMatch,
+          exactBloodTypeMatch
         };
       });
       
-      // Sort by PHM ratio (closest to 1.0 is best)
+      // Sort by:
+      // 1. Blood type compatibility (exact matches first, then compatible, then incompatible)
+      // 2. Risk level (Acceptable first)
+      // 3. Proximity to ideal PHM ratio
       const sortedResults = [...results].sort((a, b) => {
-        // First sort by risk level
+        // First sort by blood type compatibility
+        if (a.bloodTypeMatch !== b.bloodTypeMatch) {
+          return a.bloodTypeMatch ? -1 : 1;
+        }
+        
+        // Then sort by exact blood type match
+        if (a.exactBloodTypeMatch !== b.exactBloodTypeMatch) {
+          return a.exactBloodTypeMatch ? -1 : 1;
+        }
+        
+        // Then sort by risk level
         if (a.riskLevel !== b.riskLevel) {
           return a.riskLevel === 'Acceptable' ? -1 : 1;
         }
@@ -206,14 +258,14 @@ const HeartTransplantMatcher = () => {
       
       setMatchResults(sortedResults);
     } catch (err) {
-      setError('Error calculating matches. Please check your data.');
-      console.error(err);
+      console.error('Calculation error:', err);
+      setError(`Error calculating matches: ${err.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const generatePDF = () => {
+const generatePDF = () => {
     if (!matchResults.length) {
       setError('No results to export');
       return;
@@ -229,51 +281,92 @@ const HeartTransplantMatcher = () => {
       // Add donor info
       doc.setFontSize(12);
       doc.text(`Donor: ${donor.name}`, 14, 25);
-      doc.text(`Gender: ${donor.gender}, Age: ${donor.age}, Height: ${donor.height}cm, Weight: ${donor.weight}kg`, 14, 32);
-      doc.text(`Donor Predicted Heart Mass: ${matchResults[0].donorPHM.toFixed(2)}g`, 14, 39);
+      doc.text(`Gender: ${donor.gender}, Age: ${donor.age}, Blood Type: ${donor.bloodType}`, 14, 32);
+      doc.text(`Height: ${donor.height}cm, Weight: ${donor.weight}kg`, 14, 39);
+      doc.text(`Donor Predicted Heart Mass: ${matchResults[0].donorPHM.toFixed(2)}g`, 14, 46);
       
       // Add date
       const date = new Date().toLocaleDateString();
-      doc.text(`Generated on: ${date}`, 14, 46);
+      doc.text(`Generated on: ${date}`, 14, 53);
       
-      // Prepare table data
-      const tableColumn = ["Rank", "Recipient ID", "Name", "PHM Ratio", "Match Category", "Risk Level"];
+      // Prepare table data - simplified for PDF reliability
+      const tableColumn = ["Rank", "ID", "Name", "Blood Type", "Compatible", "PHM Ratio", "Risk"];
       const tableRows = matchResults.map((result, index) => [
         index + 1,
         result.id,
         result.name,
+        result.bloodType || "Unknown",
+        result.bloodTypeMatch ? "Yes" : "No",
         result.phmRatio.toFixed(2),
-        result.matchCategory,
         result.riskLevel
       ]);
       
-      // Add the table
+      // Add the table with safer options
       doc.autoTable({
-        startY: 55,
+        startY: 60,
         head: [tableColumn],
         body: tableRows,
-        theme: 'striped',
-        headStyles: { fillColor: [66, 139, 202] }
+        theme: 'grid',
+        styles: { fontSize: 9, cellPadding: 1 },
+        headStyles: { fillColor: [66, 139, 202] },
+        columnStyles: {
+          0: { cellWidth: 10 },  // Rank
+          1: { cellWidth: 15 },  // ID
+          2: { cellWidth: 30 },  // Name
+          3: { cellWidth: 15 },  // Blood Type
+          4: { cellWidth: 20, halign: 'center' }, // Compatible
+          5: { cellWidth: 15, halign: 'center' }, // PHM Ratio
+          6: { cellWidth: 20, halign: 'center' }  // Risk
+        },
+        // Color cells based on risk level
+        willDrawCell: function(data) {
+          if (data.section === 'body' && data.column.index === 6) {
+            if (data.cell.raw === 'High Risk') {
+              data.cell.styles.fillColor = [255, 200, 200];
+            } else if (data.cell.raw === 'Acceptable') {
+              data.cell.styles.fillColor = [200, 255, 200];
+            }
+          }
+          
+          // Color compatible column
+          if (data.section === 'body' && data.column.index === 4) {
+            if (data.cell.raw === 'Yes') {
+              data.cell.styles.fillColor = [220, 240, 220];
+            } else if (data.cell.raw === 'No') {
+              data.cell.styles.fillColor = [240, 220, 220];
+            }
+          }
+        }
       });
       
-      // Add information about risk categories
+      // Get the last Y position after the table
       const finalY = doc.lastAutoTable.finalY + 10;
+      
+      // Add information about risk categories
       doc.text('Risk Categories:', 14, finalY);
       doc.text('High Risk: PHM ratio < 0.86', 14, finalY + 7);
       doc.text('Acceptable: PHM ratio ≥ 0.86', 14, finalY + 14);
       
-      // Add reference to research
-      doc.text('Based on: Kransdorf et al. "Predicted heart mass is the optimal metric for size match in heart transplantation" (2019)', 14, finalY + 25);
+      // Add sorting explanation
+      doc.text('Note: Matches are sorted by:', 14, finalY + 25);
+      doc.text('1. Blood type compatibility', 20, finalY + 32);
+      doc.text('2. Risk level', 20, finalY + 39);
+      doc.text('3. Proximity to ideal ratio (1.0)', 20, finalY + 46);
       
-      // Save PDF
-      doc.save(`heart_transplant_match_report_${date.replace(/\//g, '-')}.pdf`);
+      // Add reference to research
+      doc.text('Based on: Kransdorf et al. "Predicted heart mass is the optimal metric', 14, finalY + 57);
+      doc.text('for size match in heart transplantation" (2019)', 14, finalY + 64);
+      
+      // Save PDF with more descriptive name
+      const fileName = `heart_match_${donor.name.replace(/\s+/g, '_')}_${date.replace(/\//g, '-')}.pdf`;
+      doc.save(fileName);
       
     } catch (err) {
-      setError('Error generating PDF');
-      console.error(err);
+      console.error('PDF generation error:', err);
+      setError(`Error generating PDF: ${err.message || 'Unknown error'}`);
     }
   };
-
+  
   return (
     <div className="p-6 max-w-6xl mx-auto bg-white rounded-lg shadow-md">
       <h1 className="text-2xl font-bold mb-6 text-blue-700">Heart Transplant Matching Tool</h1>
@@ -281,7 +374,7 @@ const HeartTransplantMatcher = () => {
       {/* File Upload Section */}
       <div className="mb-8 p-4 border rounded-lg bg-gray-50">
         <h2 className="text-xl font-semibold mb-3">Step 1: Upload Recipient List</h2>
-        <p className="mb-3 text-sm text-gray-600">Upload an Excel file (.xlsx) containing recipient information with columns: id, name, gender, age, height (cm), weight (kg)</p>
+        <p className="mb-3 text-sm text-gray-600">Upload an Excel file (.xlsx) containing recipient information with columns: id, name, gender, age, height (cm), weight (kg), bloodType</p>
         <div className="flex items-center">
           <input 
             type="file" 
@@ -330,6 +423,20 @@ const HeartTransplantMatcher = () => {
             </select>
           </div>
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Blood Type</label>
+            <select 
+              name="bloodType" 
+              value={donor.bloodType} 
+              onChange={handleDonorChange} 
+              className="w-full p-2 border rounded"
+            >
+              <option value="">Select blood type</option>
+              {bloodTypes.map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Age (years)</label>
             <input 
               type="number" 
@@ -364,7 +471,7 @@ const HeartTransplantMatcher = () => {
           </div>
         </div>
       </div>
-      
+            
       {/* Calculate Button */}
       <div className="flex justify-center mb-6">
         <button 
@@ -404,6 +511,8 @@ const HeartTransplantMatcher = () => {
                   <th className="py-2 px-4 border">ID</th>
                   <th className="py-2 px-4 border">Name</th>
                   <th className="py-2 px-4 border">Gender</th>
+                  <th className="py-2 px-4 border">Blood Type</th>
+                  <th className="py-2 px-4 border">Compatible</th>
                   <th className="py-2 px-4 border">Age</th>
                   <th className="py-2 px-4 border">Recipient PHM</th>
                   <th className="py-2 px-4 border">Donor PHM</th>
@@ -414,17 +523,32 @@ const HeartTransplantMatcher = () => {
               </thead>
               <tbody>
                 {matchResults.map((result, index) => (
-                  <tr key={index} className={result.riskLevel === 'High Risk' ? 'bg-red-50' : index % 2 === 0 ? 'bg-gray-50' : ''}>
+                  <tr key={index} className={
+                    result.bloodTypeMatch ? 
+                      (result.riskLevel === 'High Risk' ? 'bg-red-50' : 'bg-green-50') : 
+                      'bg-gray-200'
+                  }>
                     <td className="py-2 px-4 border text-center">{index + 1}</td>
                     <td className="py-2 px-4 border">{result.id}</td>
                     <td className="py-2 px-4 border">{result.name}</td>
                     <td className="py-2 px-4 border">{result.gender}</td>
+                    <td className="py-2 px-4 border">{result.bloodType || "Unknown"}</td>
+                    <td className="py-2 px-4 border text-center font-bold">
+                      {result.bloodTypeMatch ? 
+                        <span className="text-green-600">✓</span> : 
+                        <span className="text-red-600">✗</span>
+                      }
+                    </td>
                     <td className="py-2 px-4 border">{result.age}</td>
                     <td className="py-2 px-4 border">{result.recipientPHM.toFixed(2)}g</td>
                     <td className="py-2 px-4 border">{result.donorPHM.toFixed(2)}g</td>
                     <td className="py-2 px-4 border font-semibold">{result.phmRatio.toFixed(2)}</td>
                     <td className="py-2 px-4 border">{result.matchCategory}</td>
-                    <td className={`py-2 px-4 border font-bold ${result.riskLevel === 'High Risk' ? 'text-red-600' : 'text-green-600'}`}>
+                    <td className={`py-2 px-4 border font-bold ${
+                      result.riskLevel === 'High Risk' ? 
+                        'bg-red-200 text-red-800' : 
+                        'bg-green-200 text-green-800'
+                    }`}>
                       {result.riskLevel}
                     </td>
                   </tr>
@@ -432,19 +556,127 @@ const HeartTransplantMatcher = () => {
               </tbody>
             </table>
           </div>
-          
+                    
           {/* Information about criteria */}
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-            <h3 className="font-semibold mb-2">Match Criteria Information:</h3>
-            <ul className="list-disc pl-5 space-y-1">
-              <li><strong>PHM (Predicted Heart Mass):</strong> Calculated using formulas from Kransdorf et al. research</li>
-              <li><strong>High Risk:</strong> Donor-to-recipient PHM ratio &lt; 0.86</li>
-              <li><strong>Optimal match:</strong> Donor-to-recipient PHM ratio between 0.983 and 1.039 (Well-Matched)</li>
-              <li><strong>Results sorting:</strong> Prioritizes Acceptable risk, then sorts by closeness to optimal ratio (1.0)</li>
-            </ul>
-          </div>
-        </div>
-      )}
+                <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                  <h3 className="font-semibold mb-2">Match Criteria Information:</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li><strong>Blood Type Compatibility:</strong> Recipients are prioritized by blood type compatibility with the donor</li>
+                    <li><strong>PHM (Predicted Heart Mass):</strong> Calculated using formulas from Kransdorf et al. research</li>
+                    <li><strong>High Risk:</strong> Donor-to-recipient PHM ratio &lt; 0.86</li>
+                    <li><strong>Optimal match:</strong> Donor-to-recipient PHM ratio between 0.983 and 1.039 (Well-Matched)</li>
+                    <li><strong>Results sorting:</strong> Blood type compatibility first, then risk level, then closeness to optimal ratio (1.0)</li>
+                  </ul>
+                </div>
+                
+                {/* Blood type compatibility chart */}
+                <div className="mt-4 p-4 bg-yellow-50 rounded-lg">
+                  <h3 className="font-semibold mb-2">Blood Type Compatibility Chart:</h3>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full bg-white border mt-2">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="py-2 px-3 border">Recipient Blood Type</th>
+                          <th className="py-2 px-3 border text-center" colSpan="8">Compatible Donor Blood Types</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="py-2 px-3 border font-semibold">O-</td>
+                          <td className="py-2 px-3 border text-center bg-green-100">O-</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">O+</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">A-</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">A+</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">B-</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">B+</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 px-3 border font-semibold">O+</td>
+                          <td className="py-2 px-3 border text-center bg-green-100">O-</td>
+                          <td className="py-2 px-3 border text-center bg-green-100">O+</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">A-</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">A+</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">B-</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">B+</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
+                          <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
+                        </tr>
+
+                        <tr>
+                                            <td className="py-2 px-3 border font-semibold">A-</td>
+                                            <td className="py-2 px-3 border text-center bg-green-100">O-</td>
+                                            <td className="py-2 px-3 border text-center bg-red-100">O+</td>
+                                            <td className="py-2 px-3 border text-center bg-green-100">A-</td>
+                                            <td className="py-2 px-3 border text-center bg-red-100">A+</td>
+                                            <td className="py-2 px-3 border text-center bg-red-100">B-</td>
+                                            <td className="py-2 px-3 border text-center bg-red-100">B+</td>
+                                            <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
+                                            <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
+                                          </tr>
+                                          <tr>
+                                            <td className="py-2 px-3 border font-semibold">A+</td>
+                                            <td className="py-2 px-3 border text-center bg-green-100">O-</td>
+                                            <td className="py-2 px-3 border text-center bg-green-100">O+</td>
+                                            <td className="py-2 px-3 border text-center bg-green-100">A-</td>
+                                            <td className="py-2 px-3 border text-center bg-green-100">A+</td>
+                                            <td className="py-2 px-3 border text-center bg-red-100">B-</td>
+                                            <td className="py-2 px-3 border text-center bg-red-100">B+</td>
+                                            <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
+                                            <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
+                                                              </tr>
+                                                              <tr>
+                                                                <td className="py-2 px-3 border font-semibold">B-</td>
+                                                                <td className="py-2 px-3 border text-center bg-green-100">O-</td>
+                                                                <td className="py-2 px-3 border text-center bg-red-100">O+</td>
+                                                                <td className="py-2 px-3 border text-center bg-red-100">A-</td>
+                                                                <td className="py-2 px-3 border text-center bg-red-100">A+</td>
+                                                                <td className="py-2 px-3 border text-center bg-green-100">B-</td>
+                                                                <td className="py-2 px-3 border text-center bg-red-100">B+</td>
+                                                                <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
+                                                                <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
+                                                              </tr>
+                                                              <tr>
+                                                                <td className="py-2 px-3 border font-semibold">B+</td>
+                                                                <td className="py-2 px-3 border text-center bg-green-100">O-</td>
+                                                                <td className="py-2 px-3 border text-center bg-green-100">O+</td>
+                                                                <td className="py-2 px-3 border text-center bg-red-100">A-</td>
+                                                                <td className="py-2 px-3 border text-center bg-red-100">A+</td>
+                                                                <td className="py-2 px-3 border text-center bg-green-100">B-</td>
+                                                                <td className="py-2 px-3 border text-center bg-green-100">B+</td>
+                                                                <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
+                                                                <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
+                                                              </tr>
+                                                              <tr>
+                                                                                  <td className="py-2 px-3 border font-semibold">AB-</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">O-</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-red-100">O+</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">A-</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-red-100">A+</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">B-</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-red-100">B+</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">AB-</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
+                                                                                </tr>
+                                                                                <tr>
+                                                                                  <td className="py-2 px-3 border font-semibold">AB+</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">O-</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">O+</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">A-</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">A+</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">B-</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">B+</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">AB-</td>
+                                                                                  <td className="py-2 px-3 border text-center bg-green-100">AB+</td>
+                                                                                </tr>
+                                                                              </tbody>
+                                                                            </table>
+                                                                          </div>
+                                                                          <p className="mt-2 text-sm text-gray-600">Green cells indicate compatible blood types. AB+ recipients can receive from any donor, while O- donors can donate to any recipient.</p>
+                                                                        </div>
+                                                                      </div>
+                                                                    )}
       
       {/* Reference Section */}
       <div className="text-xs text-gray-500 mt-6 pt-4 border-t">
