@@ -1,9 +1,8 @@
 // HeartTransplantMatcher.jsx - Complete version with blood type support and PDF fixes
 import React, { useState } from 'react';
 import ExcelJS from 'exceljs';
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
-import { autoTable } from 'jspdf-autotable';
+import pdfMake from 'pdfmake/build/pdfmake';
+import pdfFonts from 'pdfmake/build/vfs_fonts';
 
 const HeartTransplantMatcher = () => {
   const [recipients, setRecipients] = useState([]);
@@ -273,84 +272,127 @@ const generatePDF = () => {
   }
   
   try {
-    // Create a new jsPDF instance
-    const doc = new jsPDF();
+    // Register fonts
+    pdfMake.vfs = pdfFonts.pdfMake.vfs;
     
-    // Add title
-    doc.setFontSize(16);
-    doc.text('Heart Transplant Match Report', 14, 15);
-    
-    // Add donor info
-    doc.setFontSize(12);
-    doc.text(`Donor: ${donor.name}`, 14, 25);
-    doc.text(`Gender: ${donor.gender}, Age: ${donor.age}, Blood Type: ${donor.bloodType}`, 14, 32);
-    doc.text(`Height: ${donor.height}cm, Weight: ${donor.weight}kg`, 14, 39);
-    doc.text(`Donor Predicted Heart Mass: ${matchResults[0].donorPHM.toFixed(2)}g`, 14, 46);
-    
-    // Add date
-    const date = new Date().toLocaleDateString();
-    doc.text(`Generated on: ${date}`, 14, 53);
-    
-    // Create simple table data
-    const rows = matchResults.map((result, index) => [
-      index + 1,
-      result.id,
-      result.name, 
-      result.bloodType || "Unknown",
-      result.bloodTypeMatch ? "Yes" : "No",
-      result.phmRatio.toFixed(2),
-      result.riskLevel
-    ]);
-    
-    // Manually create a table
-    const startY = 60;
-    const cellWidth = 25;
-    const cellHeight = 10;
-    
-    // Draw header
-    doc.setFillColor(66, 139, 202);
-    doc.setTextColor(255);
-    doc.rect(10, startY, cellWidth * 7, cellHeight, 'F');
-    
-    const headers = ["Rank", "ID", "Name", "Blood Type", "Compatible", "PHM Ratio", "Risk"];
-    headers.forEach((header, i) => {
-      doc.text(header, 10 + i * cellWidth + cellWidth/2, startY + 6, {align: 'center'});
-    });
-    
-    // Draw rows
-    doc.setTextColor(0);
-    rows.slice(0, 20).forEach((row, rowIndex) => {
-      const y = startY + (rowIndex + 1) * cellHeight;
-      
-      // Set risk level cell color
-      if (row[6] === 'High Risk') {
-        doc.setFillColor(255, 200, 200);
-      } else {
-        doc.setFillColor(200, 255, 200);
+    // Add a Greek-compatible font
+    pdfMake.fonts = {
+      Roboto: {
+        normal: 'Roboto-Regular.ttf',
+        bold: 'Roboto-Medium.ttf',
+        italics: 'Roboto-Italic.ttf',
+        bolditalics: 'Roboto-MediumItalic.ttf'
       }
+    };
+    
+    // Create document definition
+    const docDefinition = {
+      content: [
+        // Title
+        { text: 'Heart Transplant Match Report', style: 'header' },
+        
+        // Donor information
+        { text: `Donor: ${donor.name}`, margin: [0, 10, 0, 0] },
+        { text: `Gender: ${donor.gender}, Age: ${donor.age}, Blood Type: ${donor.bloodType}` },
+        { text: `Height: ${donor.height}cm, Weight: ${donor.weight}kg` },
+        { text: `Donor Predicted Heart Mass: ${matchResults[0].donorPHM.toFixed(2)}g` },
+        { text: `Generated on: ${new Date().toLocaleDateString()}`, margin: [0, 0, 0, 10] },
+        
+        // Table
+        {
+          table: {
+            headerRows: 1,
+            widths: [20, 30, 80, 25, 35, 30, 50, 50, 50, 35, 80, 50],
+            body: [
+              // Header row
+              [
+                { text: 'Rank', style: 'tableHeader' },
+                { text: 'ID', style: 'tableHeader' },
+                { text: 'Name', style: 'tableHeader' },
+                { text: 'Gender', style: 'tableHeader' },
+                { text: 'Blood Type', style: 'tableHeader' },
+                { text: 'Compatible', style: 'tableHeader' },
+                { text: 'Age', style: 'tableHeader' },
+                { text: 'Recipient PHM', style: 'tableHeader' },
+                { text: 'Donor PHM', style: 'tableHeader' },
+                { text: 'PHM Ratio', style: 'tableHeader' },
+                { text: 'Match Category', style: 'tableHeader' },
+                { text: 'Risk Level', style: 'tableHeader' }
+              ],
+              // Data rows
+              ...matchResults.map((result, index) => [
+                index + 1,
+                result.id,
+                result.name,
+                result.gender,
+                result.bloodType || "Unknown",
+                result.bloodTypeMatch ? "✓" : "✗",
+                result.age,
+                `${result.recipientPHM.toFixed(2)}g`,
+                `${result.donorPHM.toFixed(2)}g`,
+                result.phmRatio.toFixed(2),
+                result.matchCategory,
+                {
+                  text: result.riskLevel,
+                  fillColor: result.riskLevel === 'High Risk' ? '#fecaca' : '#bbf7d0',
+                  color: result.riskLevel === 'High Risk' ? '#991b1b' : '#166534'
+                }
+              ])
+            ]
+          }
+        },
+        
+        // Risk Categories
+        { text: 'Risk Categories:', style: 'subheader', margin: [0, 15, 0, 5] },
+        { text: 'High Risk: PHM ratio < 0.86' },
+        { text: 'Acceptable: PHM ratio ≥ 0.86' },
+        
+        // Note on sorting
+        { text: 'Note: Matches are sorted by:', margin: [0, 10, 0, 0] },
+        { text: '1. Blood type compatibility', margin: [10, 0, 0, 0] },
+        { text: '2. Risk level', margin: [10, 0, 0, 0] },
+        { text: '3. Proximity to ideal ratio (1.0)', margin: [10, 0, 0, 0] },
+        
+        // Reference
+        { 
+          text: 'Based on: Kransdorf et al. "Predicted heart mass is the optimal metric for size match in heart transplantation" (2019)',
+          style: 'reference',
+          margin: [0, 15, 0, 0]
+        }
+      ],
       
-      // Draw risk level cell with color
-      doc.rect(10 + 6 * cellWidth, y, cellWidth, cellHeight, 'F');
+      // Styles
+      styles: {
+        header: {
+          fontSize: 18,
+          bold: true,
+          margin: [0, 0, 0, 10]
+        },
+        subheader: {
+          fontSize: 14,
+          bold: true
+        },
+        tableHeader: {
+          bold: true,
+          fontSize: 10,
+          color: 'white',
+          fillColor: '#4285F4'
+        },
+        reference: {
+          fontSize: 10,
+          italics: true
+        }
+      },
       
-      // Draw other cells
-      doc.setDrawColor(0);
-      for (let i = 0; i < 7; i++) {
-        // Draw cell border
-        doc.rect(10 + i * cellWidth, y, cellWidth, cellHeight);
-        // Add text
-        doc.text(String(row[i]), 10 + i * cellWidth + cellWidth/2, y + 6, {align: 'center'});
+      // Default font
+      defaultStyle: {
+        font: 'Roboto'
       }
-    });
+    };
     
-    // Add risk category information
-    const finalY = startY + (Math.min(rows.length, 20) + 1) * cellHeight + 10;
-    doc.text('Risk Categories:', 14, finalY);
-    doc.text('High Risk: PHM ratio < 0.86', 14, finalY + 7);
-    doc.text('Acceptable: PHM ratio ≥ 0.86', 14, finalY + 14);
-    
-    // Save PDF
-    const fileName = `heart_match_${donor.name.replace(/\s+/g, '_')}_${date.replace(/\//g, '-')}.pdf`;
-    doc.save(fileName);
+    // Generate PDF
+    const fileName = `heart_match_${donor.name.replace(/\s+/g, '_')}_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`;
+    pdfMake.createPdf(docDefinition).download(fileName);
     
   } catch (err) {
     console.error('PDF generation error:', err);
