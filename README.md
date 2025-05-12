@@ -9,10 +9,10 @@ This application implements the research findings from Kransdorf et al. (2019), 
 The app allows medical professionals to:
 
 1. Upload an Excel file with recipient data
-2. Enter donor information
+2. Enter donor information including blood type
 3. Calculate PHM for all potential matches
-4. Rank recipients by match quality
-5. Generate a downloadable PDF report
+4. Rank recipients by blood type compatibility and match quality
+5. Generate a printable report with color-coded risk levels
 6. Keep all data local for patient privacy (no server processing)
 
 ## 🔬 Scientific Basis
@@ -30,7 +30,7 @@ Key findings implemented in this tool:
 
 ### Online Demo
 
-You can try the application at: https://[your-username].github.io/heart-transplant-matcher/
+You can try the application at: https://milio90.github.io/heart-transplant-matcher/
 
 ### Local Development
 
@@ -63,32 +63,51 @@ Create an Excel file with the following columns:
 - `age` (in years)
 - `height` (in cm)
 - `weight` (in kg)
+- `bloodType` (A+, A-, B+, B-, AB+, AB-, O+, O-)
 
 ### Using the Application
 
 1. Upload your Excel file with recipient data
-2. Enter the donor information (name, gender, age, height, weight)
+2. Enter the donor information (name, gender, age, height, weight, blood type)
 3. Click "Calculate Matches"
-4. Review the results (sorted by match quality)
-5. Download the PDF report if needed
+4. Review the results (sorted by blood type compatibility, then risk level)
+5. Click "Download PDF Report" to generate a printable report
 
 ## 📈 Understanding the Results
 
 The matching results include:
+- **Blood Type Compatibility**: Shows whether the donor and recipient blood types are compatible
 - **PHM Ratio**: Donor PHM / Recipient PHM
 - **Match Category**: Based on septiles from the research paper
 - **Risk Level**: High Risk (PHM ratio < 0.86) or Acceptable (PHM ratio ≥ 0.86)
 
 Results are sorted by:
-1. Risk level (Acceptable first)
-2. Closeness to ideal match (PHM ratio = 1.0)
+1. Blood type compatibility (compatible matches first)
+2. Risk level (Acceptable first)
+3. Closeness to ideal match (PHM ratio = 1.0)
+
+The application includes a comprehensive blood type compatibility chart showing which donor types are compatible with each recipient type.
+
+## 📄 PDF Report Generation
+
+The application generates a printable report containing:
+- Donor information
+- A table of all potential recipients with compatibility information
+- Color-coded risk levels (red for High Risk, green for Acceptable)
+- Blood type compatibility indicators
+- Reference information about the risk categories
+
+To generate a report:
+1. Click the "Download PDF Report" button after calculating matches
+2. A new window will open with the formatted report
+3. Use your browser's print function (Ctrl+P or Cmd+P) to save as PDF
 
 ## 🔒 Privacy
 
 - All data processing happens locally in the browser
 - No data is sent to any servers
-- No information is stored between sessions
 - Excel files are processed entirely client-side
+- PDF generation occurs using the browser's built-in functionality
 
 ## 🧰 Technologies Used
 
@@ -96,7 +115,7 @@ Results are sorted by:
 - Vite
 - Tailwind CSS
 - ExcelJS (for Excel file processing)
-- jsPDF (for PDF generation)
+- Browser-based PDF generation
 
 ## ⚠️ Disclaimer
 
@@ -104,12 +123,4 @@ This tool is for educational and research purposes only. Clinical decisions shou
 
 ## 📝 License
 
-[Choose an appropriate license, e.g., MIT, Apache 2.0]
-
-## 👨‍💻 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📧 Contact
-
-[Your contact information if you want to include it]
+MIT
