@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import ExcelJS from 'exceljs';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import { autoTable } from 'jspdf-autotable';
 
 const HeartTransplantMatcher = () => {
   const [recipients, setRecipients] = useState([]);
@@ -523,11 +524,11 @@ const generatePDF = () => {
               </thead>
               <tbody>
                 {matchResults.map((result, index) => (
-                  <tr key={index} className={
-                    result.bloodTypeMatch ? 
-                      (result.riskLevel === 'High Risk' ? 'bg-red-50' : 'bg-green-50') : 
-                      'bg-gray-200'
-                  }>
+                  <tr key={index} style={{
+                    backgroundColor: result.bloodTypeMatch 
+                      ? (result.riskLevel === 'High Risk' ? '#fee2e2' : '#dcfce7') 
+                      : '#e5e7eb'
+                  }}>
                     <td className="py-2 px-4 border text-center">{index + 1}</td>
                     <td className="py-2 px-4 border">{result.id}</td>
                     <td className="py-2 px-4 border">{result.name}</td>
@@ -535,8 +536,8 @@ const generatePDF = () => {
                     <td className="py-2 px-4 border">{result.bloodType || "Unknown"}</td>
                     <td className="py-2 px-4 border text-center font-bold">
                       {result.bloodTypeMatch ? 
-                        <span className="text-green-600">✓</span> : 
-                        <span className="text-red-600">✗</span>
+                        <span style={{color: '#16a34a'}}>✓</span> : 
+                        <span style={{color: '#dc2626'}}>✗</span>
                       }
                     </td>
                     <td className="py-2 px-4 border">{result.age}</td>
@@ -544,11 +545,10 @@ const generatePDF = () => {
                     <td className="py-2 px-4 border">{result.donorPHM.toFixed(2)}g</td>
                     <td className="py-2 px-4 border font-semibold">{result.phmRatio.toFixed(2)}</td>
                     <td className="py-2 px-4 border">{result.matchCategory}</td>
-                    <td className={`py-2 px-4 border font-bold ${
-                      result.riskLevel === 'High Risk' ? 
-                        'bg-red-200 text-red-800' : 
-                        'bg-green-200 text-green-800'
-                    }`}>
+                    <td className="py-2 px-4 border font-bold" style={{
+                      backgroundColor: result.riskLevel === 'High Risk' ? '#fecaca' : '#bbf7d0',
+                      color: result.riskLevel === 'High Risk' ? '#991b1b' : '#166534'
+                    }}>
                       {result.riskLevel}
                     </td>
                   </tr>
