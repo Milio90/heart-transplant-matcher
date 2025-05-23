@@ -19,17 +19,40 @@ const HeartTransplantMatcher = () => {
 
   // Available blood types
   const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-
-  // Blood type compatibility chart (recipient can receive from donor)
-  const bloodTypeCompatibility = {
-    'A+': ['A+', 'A-', 'O+', 'O-'],
-    'A-': ['A-', 'O-'],
-    'B+': ['B+', 'B-', 'O+', 'O-'],
-    'B-': ['B-', 'O-'],
-    'AB+': ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
-    'AB-': ['A-', 'B-', 'AB-', 'O-'],
-    'O+': ['O+', 'O-'],
-    'O-': ['O-']
+  
+  // Extract ABO type from full blood type (ignore Rhesus for compatibility)
+  const getABOType = (bloodType) => {
+    if (!bloodType) return null;
+    const aboType = bloodType.replace(/[+-]/, ''); // Remove + or -
+    return ['A', 'B', 'AB', 'O'].includes(aboType) ? aboType : null;
+  };
+  
+  // Check if Rhesus types are mismatched
+  const hasRhesusMismatch = (donorBloodType, recipientBloodType) => {
+    if (!donorBloodType || !recipientBloodType) return false;
+    
+    const donorRhesus = donorBloodType.includes('+') ? '+' : '-';
+    const recipientRhesus = recipientBloodType.includes('+') ? '+' : '-';
+    
+    // Rh- recipient receiving Rh+ blood is problematic
+    return recipientRhesus === '-' && donorRhesus === '+';
+  };
+  
+  // Updated blood type compatibility chart (ABO only)
+  const aboCompatibility = {
+    'A': ['A', 'O'],
+    'B': ['B', 'O'],
+    'AB': ['A', 'B', 'AB', 'O'],
+    'O': ['O']
+  };
+  
+  // Check ABO compatibility only
+  const isABOCompatible = (donorBloodType, recipientBloodType) => {
+    const donorABO = getABOType(donorBloodType);
+    const recipientABO = getABOType(recipientBloodType);
+    
+    if (!donorABO || !recipientABO) return false;
+    return aboCompatibility[recipientABO]?.includes(donorABO) || false;
   };
 
 // Calculate PHM based on formula from the uploaded document
@@ -71,93 +94,102 @@ const HeartTransplantMatcher = () => {
     return 'Acceptable';
   };
 
-  // Check blood type compatibility
-  const isBloodTypeCompatible = (donorBloodType, recipientBloodType) => {
-    if (!donorBloodType || !recipientBloodType) return false;
-    return bloodTypeCompatibility[recipientBloodType]?.includes(donorBloodType) || false;
-  };
-
 const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    setFile(file);
-    setError('');
+  const file = e.target.files[0];
+  setFile(file);
+  setError('');
+  
+  if (!file) return;
+  
+  try {
+    setIsLoading(true);
+    const workbook = new ExcelJS.Workbook();
     
-    if (!file) return;
+    // Read the Excel file
+    const arrayBuffer = await file.arrayBuffer();
+    await workbook.xlsx.load(arrayBuffer);
     
-    try {
-      setIsLoading(true);
-      const workbook = new ExcelJS.Workbook();
-      
-      // Read the Excel file
-      const arrayBuffer = await file.arrayBuffer();
-      await workbook.xlsx.load(arrayBuffer);
-      
-      // Get the first worksheet
-      const worksheet = workbook.worksheets[0];
-      
-      if (!worksheet) {
-        setError('No worksheet found in the Excel file.');
-        setIsLoading(false);
-        return;
-      }
-      
-      // Convert worksheet to JSON
-      const jsonData = [];
-      const headers = [];
-      
-      // Get headers
-      worksheet.getRow(1).eachCell((cell, colNumber) => {
-        headers[colNumber - 1] = cell.value.toString().toLowerCase();
-      });
-      
-      // Check for required columns
-      const requiredColumns = ['id', 'name', 'gender', 'age', 'height', 'weight'];
-      const missingColumns = requiredColumns.filter(col => !headers.includes(col));
-      
-      if (missingColumns.length) {
-        setError(`Missing required columns: ${missingColumns.join(', ')}`);
-        setIsLoading(false);
-        return;
-      }
-
-      // Warn if bloodType column is missing
-      if (!headers.includes('bloodtype')) {
-        setError('Warning: No "bloodType" column found. Blood type matching will be disabled.');
-      }
-      
-      // Convert rows to JSON
-      worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return; // Skip header row
-        
-        const rowData = {};
-        row.eachCell((cell, colNumber) => {
-          const header = headers[colNumber - 1];
-          rowData[header] = cell.value;
-        });
-        
-        // Normalize the blood type field name
-        if (rowData.bloodtype && !rowData.bloodType) {
-          rowData.bloodType = rowData.bloodtype;
-          delete rowData.bloodtype;
-        }
-        
-        jsonData.push(rowData);
-      });
-      
-      if (jsonData.length === 0) {
-        setError('The uploaded file contains no data.');
-        setIsLoading(false);
-        return;
-      }
-      
-      setRecipients(jsonData);
+    // Get the first worksheet
+    const worksheet = workbook.worksheets[0];
+    
+    if (!worksheet) {
+      setError('No worksheet found in the Excel file.');
       setIsLoading(false);
-    } catch (err) {
-      console.error('File processing error:', err);
-      setError(`Error processing file: ${err.message || 'Unknown error'}`);
-      setIsLoading(false);
+      return;
     }
-  };
+    
+    // Convert worksheet to JSON
+    const jsonData = [];
+    const headers = [];
+    
+    // Get headers
+    worksheet.getRow(1).eachCell((cell, colNumber) => {
+      headers[colNumber - 1] = cell.value.toString().toLowerCase();
+    });
+    
+    // Check for required columns (updated list)
+    const requiredColumns = ['dateadded', 'id', 'name', 'gender', 'age', 'height', 'weight', 'status'];
+    const missingColumns = requiredColumns.filter(col => !headers.includes(col));
+    
+    if (missingColumns.length) {
+      setError(`Missing required columns: ${missingColumns.join(', ')}`);
+      setIsLoading(false);
+      return;
+    }
+
+    // Warn if bloodType column is missing
+    if (!headers.includes('bloodtype')) {
+      setError('Warning: No "bloodType" column found. Blood type matching will be disabled.');
+    }
+    
+    // Convert rows to JSON
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // Skip header row
+      
+      const rowData = {};
+      row.eachCell((cell, colNumber) => {
+        const header = headers[colNumber - 1];
+        
+        // Special handling for date column
+        if (header === 'dateadded') {
+          // Handle Excel date format
+          if (cell.value instanceof Date) {
+            rowData[header] = cell.value;
+          } else if (typeof cell.value === 'number') {
+            // Excel date serial number
+            rowData[header] = new Date((cell.value - 25569) * 86400 * 1000);
+          } else {
+            // Try to parse as string date
+            rowData[header] = new Date(cell.value);
+          }
+        } else {
+          rowData[header] = cell.value;
+        }
+      });
+      
+      // Normalize the blood type field name
+      if (rowData.bloodtype && !rowData.bloodType) {
+        rowData.bloodType = rowData.bloodtype;
+        delete rowData.bloodtype;
+      }
+      
+      jsonData.push(rowData);
+    });
+    
+    if (jsonData.length === 0) {
+      setError('The uploaded file contains no data.');
+      setIsLoading(false);
+      return;
+    }
+    
+    setRecipients(jsonData);
+    setIsLoading(false);
+  } catch (err) {
+    console.error('File processing error:', err);
+    setError(`Error processing file: ${err.message || 'Unknown error'}`);
+    setIsLoading(false);
+  }
+};
 
   const handleDonorChange = (e) => {
     const { name, value } = e.target;
@@ -165,103 +197,115 @@ const handleFileUpload = async (e) => {
   };
   
   const handleCalculateMatches = () => {
-    // Validate donor data
-    const donorFields = ['name', 'gender', 'age', 'height', 'weight', 'bloodType'];
-    const missingFields = donorFields.filter(field => !donor[field]);
-    
-    if (missingFields.length) {
-      setError(`Please fill in all donor fields: ${missingFields.join(', ')}`);
-      return;
-    }
+  // Validate donor data
+  const donorFields = ['name', 'gender', 'age', 'height', 'weight', 'bloodType'];
+  const missingFields = donorFields.filter(field => !donor[field]);
+  
+  if (missingFields.length) {
+    setError(`Please fill in all donor fields: ${missingFields.join(', ')}`);
+    return;
+  }
 
-    // Numeric validation
-    const numericFields = ['age', 'height', 'weight'];
-    for (const field of numericFields) {
-      if (isNaN(parseFloat(donor[field]))) {
-        setError(`Donor ${field} must be a number`);
-        return;
-      }
-    }
-    
-    if (!recipients.length) {
-      setError('Please upload a recipient list first');
+  // Numeric validation
+  const numericFields = ['age', 'height', 'weight'];
+  for (const field of numericFields) {
+    if (isNaN(parseFloat(donor[field]))) {
+      setError(`Donor ${field} must be a number`);
       return;
     }
+  }
+  
+  if (!recipients.length) {
+    setError('Please upload a recipient list first');
+    return;
+  }
+  
+  setIsLoading(true);
+  setError('');
+  
+  try {
+    // Calculate donor PHM
+    const donorPHM = calculatePHM(
+      donor.gender,
+      parseFloat(donor.age),
+      parseFloat(donor.height),
+      parseFloat(donor.weight)
+    );
     
-    setIsLoading(true);
-    setError('');
+    // Track Rhesus warnings
+    let rhesusWarnings = 0;
     
-    try {
-      // Calculate donor PHM
-      const donorPHM = calculatePHM(
-        donor.gender,
-        parseFloat(donor.age),
-        parseFloat(donor.height),
-        parseFloat(donor.weight)
+    // Calculate match for each recipient
+    const results = recipients.map(recipient => {
+      // Calculate recipient PHM
+      const recipientPHM = calculatePHM(
+        recipient.gender,
+        parseFloat(recipient.age),
+        parseFloat(recipient.height),
+        parseFloat(recipient.weight)
       );
       
-      // Calculate match for each recipient
-      const results = recipients.map(recipient => {
-        // Calculate recipient PHM
-        const recipientPHM = calculatePHM(
-          recipient.gender,
-          parseFloat(recipient.age),
-          parseFloat(recipient.height),
-          parseFloat(recipient.weight)
-        );
-        
-        const phmRatio = calculatePHMRatio(donorPHM, recipientPHM);
-        const matchCategory = determineMatchCategory(phmRatio);
-        const riskLevel = determineRiskLevel(phmRatio);
-        
-        // Check blood type compatibility
-        const bloodTypeMatch = isBloodTypeCompatible(donor.bloodType, recipient.bloodType);
-        const exactBloodTypeMatch = donor.bloodType === recipient.bloodType;
-        
-        return {
-          ...recipient,
-          donorPHM,
-          recipientPHM,
-          phmRatio,
-          matchCategory,
-          riskLevel,
-          bloodTypeMatch,
-          exactBloodTypeMatch
-        };
-      });
+      const phmRatio = calculatePHMRatio(donorPHM, recipientPHM);
+      const matchCategory = determineMatchCategory(phmRatio);
+      const riskLevel = determineRiskLevel(phmRatio);
       
-      // Sort by:
-      // 1. Blood type compatibility (exact matches first, then compatible, then incompatible)
-      // 2. Risk level (Acceptable first)
-      // 3. Proximity to ideal PHM ratio
-      const sortedResults = [...results].sort((a, b) => {
-        // First sort by blood type compatibility
-        if (a.bloodTypeMatch !== b.bloodTypeMatch) {
-          return a.bloodTypeMatch ? -1 : 1;
-        }
-        
-        // Then sort by exact blood type match
-        if (a.exactBloodTypeMatch !== b.exactBloodTypeMatch) {
-          return a.exactBloodTypeMatch ? -1 : 1;
-        }
-        
-        // Then sort by risk level
-        if (a.riskLevel !== b.riskLevel) {
-          return a.riskLevel === 'Acceptable' ? -1 : 1;
-        }
-        
-        // Then sort by how close the ratio is to 1.0
-        return Math.abs(a.phmRatio - 1) - Math.abs(b.phmRatio - 1);
-      });
+      // Check ABO compatibility and Rhesus mismatch
+      const aboMatch = isABOCompatible(donor.bloodType, recipient.bloodType);
+      const rhesusWarning = hasRhesusMismatch(donor.bloodType, recipient.bloodType);
       
-      setMatchResults(sortedResults);
-    } catch (err) {
-      console.error('Calculation error:', err);
-      setError(`Error calculating matches: ${err.message || 'Unknown error'}`);
-    } finally {
-      setIsLoading(false);
+      if (rhesusWarning) rhesusWarnings++;
+      
+      return {
+        ...recipient,
+        donorPHM,
+        recipientPHM,
+        phmRatio,
+        matchCategory,
+        riskLevel,
+        aboMatch,
+        rhesusWarning,
+        // Parse status as number
+        status: parseInt(recipient.status) || 7,
+        // Ensure dateAdded is a Date object
+        dateAdded: recipient.dateadded instanceof Date ? recipient.dateadded : new Date(recipient.dateadded)
+      };
+    });
+    
+    // Sort by: PHM risk level → ABO compatibility → Status → Date added
+    const sortedResults = [...results].sort((a, b) => {
+      // 1. Risk level (Acceptable first)
+      if (a.riskLevel !== b.riskLevel) {
+        return a.riskLevel === 'Acceptable' ? -1 : 1;
+      }
+      
+      // 2. ABO blood type compatibility
+      if (a.aboMatch !== b.aboMatch) {
+        return a.aboMatch ? -1 : 1;
+      }
+      
+      // 3. Patient status (lower number = higher priority)
+      if (a.status !== b.status) {
+        return a.status - b.status;
+      }
+      
+      // 4. Date added (older dates first)
+      return a.dateAdded - b.dateAdded;
+    });
+    
+    setMatchResults(sortedResults);
+    
+    // Show Rhesus warning if applicable
+    if (rhesusWarnings > 0) {
+      setError(`Warning: ${rhesusWarnings} recipient(s) have Rhesus incompatibility (Rh- recipient with Rh+ donor). Consider these matches carefully.`);
     }
-  };
+    
+  } catch (err) {
+    console.error('Calculation error:', err);
+    setError(`Error calculating matches: ${err.message || 'Unknown error'}`);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
 const generatePDF = () => {
   if (!matchResults.length) {
@@ -270,30 +314,31 @@ const generatePDF = () => {
   }
 
   try {
-    // Create a printable version in a new window
     const printWindow = window.open('', '_blank');
     
-    // Add content to the new window
     printWindow.document.write(`
       <html>
         <head>
           <title>Heart Transplant Match Report</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #4285F4; color: white; }
+            body { font-family: Arial, sans-serif; padding: 20px; font-size: 12px; }
+            table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+            th { background-color: #4285F4; color: white; font-size: 10px; }
             .high-risk { background-color: #fecaca; color: #991b1b; }
             .acceptable { background-color: #bbf7d0; color: #166534; }
+            .priority-high { color: #dc2626; font-weight: bold; }
+            .priority-medium { color: #ea580c; font-weight: bold; }
+            .priority-low { color: #16a34a; }
           </style>
         </head>
         <body>
           <h1>Heart Transplant Match Report</h1>
-          <p>Donor: ${donor.name}</p>
-          <p>Gender: ${donor.gender}, Age: ${donor.age}, Blood Type: ${donor.bloodType}</p>
-          <p>Height: ${donor.height}cm, Weight: ${donor.weight}kg</p>
-          <p>Donor Predicted Heart Mass: ${matchResults[0].donorPHM.toFixed(2)}g</p>
-          <p>Generated on: ${new Date().toLocaleDateString()}</p>
+          <p><strong>Donor:</strong> ${donor.name}</p>
+          <p><strong>Details:</strong> ${donor.gender}, Age: ${donor.age}, Blood Type: ${donor.bloodType}</p>
+          <p><strong>Physical:</strong> Height: ${donor.height}cm, Weight: ${donor.weight}kg</p>
+          <p><strong>Donor PHM:</strong> ${matchResults[0].donorPHM.toFixed(2)}g</p>
+          <p><strong>Generated:</strong> ${new Date().toLocaleDateString()}</p>
           
           <table>
             <thead>
@@ -301,8 +346,11 @@ const generatePDF = () => {
                 <th>Rank</th>
                 <th>ID</th>
                 <th>Name</th>
+                <th>Date Added</th>
+                <th>Status</th>
                 <th>Blood Type</th>
-                <th>Compatible</th>
+                <th>ABO Match</th>
+                <th>Rh Warn</th>
                 <th>PHM Ratio</th>
                 <th>Risk Level</th>
               </tr>
@@ -313,8 +361,11 @@ const generatePDF = () => {
                   <td>${index + 1}</td>
                   <td>${result.id}</td>
                   <td>${result.name}</td>
+                  <td>${result.dateAdded.toLocaleDateString()}</td>
+                  <td class="${result.status <= 2 ? 'priority-high' : result.status <= 4 ? 'priority-medium' : 'priority-low'}">${result.status}</td>
                   <td>${result.bloodType || "Unknown"}</td>
-                  <td>${result.bloodTypeMatch ? "✓" : "✗"}</td>
+                  <td>${result.aboMatch ? "✓" : "✗"}</td>
+                  <td>${result.rhesusWarning ? "⚠" : "-"}</td>
                   <td>${result.phmRatio.toFixed(2)}</td>
                   <td class="${result.riskLevel === 'High Risk' ? 'high-risk' : 'acceptable'}">${result.riskLevel}</td>
                 </tr>
@@ -322,19 +373,31 @@ const generatePDF = () => {
             </tbody>
           </table>
           
+          <h3>Sorting Criteria (in order of priority):</h3>
+          <ol>
+            <li>PHM Risk Level (Acceptable first)</li>
+            <li>ABO Blood Type Compatibility</li>
+            <li>Patient Status (1=highest priority)</li>
+            <li>Date Added to List (oldest first)</li>
+          </ol>
+          
           <h3>Risk Categories:</h3>
-          <p>High Risk: PHM ratio < 0.86</p>
-          <p>Acceptable: PHM ratio ≥ 0.86</p>
-          <p>Based on: Kransdorf et al. "Predicted heart mass is the optimal metric for size match in heart transplantation" (2019)</p>
+          <p><strong>High Risk:</strong> PHM ratio < 0.86</p>
+          <p><strong>Acceptable:</strong> PHM ratio ≥ 0.86</p>
+          
+          <h3>Status Levels:</h3>
+          <p><strong>1-2:</strong> Critical priority | <strong>3-4:</strong> High priority | <strong>5-7:</strong> Standard priority</p>
+          
+          <p><strong>Note:</strong> ⚠ indicates Rhesus incompatibility (Rh- recipient with Rh+ donor)</p>
+          
+          <p style="margin-top: 15px; font-size: 10px;"><em>Based on: Kransdorf et al. "Predicted heart mass is the optimal metric for size match in heart transplantation" (2019)</em></p>
         </body>
       </html>
     `);
     
-    // Prepare for printing/saving
     printWindow.document.close();
     printWindow.focus();
     
-    // Small delay to ensure content is loaded before printing
     setTimeout(() => {
       printWindow.print();
     }, 500);
@@ -482,15 +545,18 @@ const generatePDF = () => {
           </div>
           
           <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border">
+            <table ref={resultsTableRef} className="min-w-full bg-white border">
               <thead className="bg-gray-100">
                 <tr>
                   <th className="py-2 px-4 border">Rank</th>
                   <th className="py-2 px-4 border">ID</th>
                   <th className="py-2 px-4 border">Name</th>
+                  <th className="py-2 px-4 border">Date Added</th>
+                  <th className="py-2 px-4 border">Status</th>
                   <th className="py-2 px-4 border">Gender</th>
                   <th className="py-2 px-4 border">Blood Type</th>
-                  <th className="py-2 px-4 border">Compatible</th>
+                  <th className="py-2 px-4 border">ABO Compatible</th>
+                  <th className="py-2 px-4 border">Rh Warning</th>
                   <th className="py-2 px-4 border">Age</th>
                   <th className="py-2 px-4 border">Recipient PHM</th>
                   <th className="py-2 px-4 border">Donor PHM</th>
@@ -505,12 +571,24 @@ const generatePDF = () => {
                     <td className="py-2 px-4 border text-center">{index + 1}</td>
                     <td className="py-2 px-4 border">{result.id}</td>
                     <td className="py-2 px-4 border">{result.name}</td>
+                    <td className="py-2 px-4 border">{result.dateAdded.toLocaleDateString()}</td>
+                    <td className="py-2 px-4 border text-center font-semibold" style={{
+                      color: result.status <= 2 ? '#dc2626' : result.status <= 4 ? '#ea580c' : '#16a34a'
+                    }}>
+                      {result.status}
+                    </td>
                     <td className="py-2 px-4 border">{result.gender}</td>
                     <td className="py-2 px-4 border">{result.bloodType || "Unknown"}</td>
                     <td className="py-2 px-4 border text-center font-bold">
-                      {result.bloodTypeMatch ? 
+                      {result.aboMatch ? 
                         <span style={{color: '#16a34a'}}>✓</span> : 
                         <span style={{color: '#dc2626'}}>✗</span>
+                      }
+                    </td>
+                    <td className="py-2 px-4 border text-center">
+                      {result.rhesusWarning ? 
+                        <span style={{color: '#ea580c'}}>⚠</span> : 
+                        <span style={{color: '#6b7280'}}>-</span>
                       }
                     </td>
                     <td className="py-2 px-4 border">{result.age}</td>
