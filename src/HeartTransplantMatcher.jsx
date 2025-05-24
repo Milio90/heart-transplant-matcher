@@ -631,7 +631,7 @@ const generatePDF = () => {
                   </ul>
                 </div>
                 
-                {/* Blood type compatibility chart */}
+    {/* Blood type compatibility chart */}
     <div className="mt-4 p-4 bg-yellow-50 rounded-lg">
       <h3 className="font-semibold mb-2">ABO Blood Type Compatibility Chart:</h3>
       <div className="overflow-x-auto">
@@ -679,6 +679,16 @@ const generatePDF = () => {
         AB recipients can receive from any ABO type, while O recipients can only receive from O donors.
       </p>
     </div>
+            </div>
+          )}
+          
+          {/* Reference Section */}
+          <div className="text-xs text-gray-500 mt-6 pt-4 border-t">
+            <p><strong>Reference:</strong> Kransdorf et al. "Predicted heart mass is the optimal metric for size match in heart transplantation." The Journal of Heart and Lung Transplantation 38.2 (2019): 156-165.</p>
+            <p className="mt-1">This application implements the PHM calculations and risk thresholds described in this research.</p>
+            <p className="mt-3 text-red-600 font-semibold">IMPORTANT: This tool is for educational and research purposes only. Clinical decisions should always be made by qualified healthcare professionals.</p>
+          </div>
+        </div>
   );
 };
 
