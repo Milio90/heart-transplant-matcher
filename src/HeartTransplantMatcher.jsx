@@ -1,5 +1,5 @@
 // HeartTransplantMatcher.jsx - Complete version with blood type support and PDF fixes
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import ExcelJS from 'exceljs';
 
 const HeartTransplantMatcher = () => {
@@ -16,6 +16,7 @@ const HeartTransplantMatcher = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [file, setFile] = useState(null);
+  const resultsTableRef = useRef(null);
 
   // Available blood types
   const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
@@ -415,7 +416,17 @@ const generatePDF = () => {
       {/* File Upload Section */}
       <div className="mb-8 p-4 border rounded-lg bg-gray-50">
         <h2 className="text-xl font-semibold mb-3">Step 1: Upload Recipient List</h2>
-        <p className="mb-3 text-sm text-gray-600">Upload an Excel file (.xlsx) containing recipient information with columns: id, name, gender, age, height (cm), weight (kg), bloodType</p>
+        <p className="mb-3 text-sm text-gray-600">
+          Upload an Excel file (.xlsx) containing recipient information with columns: 
+          dateAdded, id, name, gender, age, height (cm), weight (kg), bloodType, status (1-7)
+        </p>
+        <div className="mb-2 text-xs text-gray-500">
+          <strong>Column details:</strong><br/>
+          • dateAdded: Date patient was added to waiting list<br/>
+          • status: Priority level (1=highest priority, 7=lowest priority)<br/>
+          • bloodType: Include Rh factor (e.g., A+, B-, O+, AB-)
+        </div>
+        
         <div className="flex items-center">
           <input 
             type="file" 
@@ -616,116 +627,57 @@ const generatePDF = () => {
                     <li><strong>PHM (Predicted Heart Mass):</strong> Calculated using formulas from Kransdorf et al. research</li>
                     <li><strong>High Risk:</strong> Donor-to-recipient PHM ratio &lt; 0.86</li>
                     <li><strong>Optimal match:</strong> Donor-to-recipient PHM ratio between 0.983 and 1.039 (Well-Matched)</li>
-                    <li><strong>Results sorting:</strong> Blood type compatibility first, then risk level, then closeness to optimal ratio (1.0)</li>
+                    <li><strong>Results sorting:</strong> PHM risk level first, then ABO compatibility, then patient status, then date added</li>
                   </ul>
                 </div>
                 
                 {/* Blood type compatibility chart */}
                 <div className="mt-4 p-4 bg-yellow-50 rounded-lg">
-                  <h3 className="font-semibold mb-2">Blood Type Compatibility Chart:</h3>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full bg-white border mt-2">
-                      <thead className="bg-gray-100">
-                        <tr>
-                          <th className="py-2 px-3 border">Recipient Blood Type</th>
-                          <th className="py-2 px-3 border text-center" colSpan="8">Compatible Donor Blood Types</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td className="py-2 px-3 border font-semibold">O-</td>
-                          <td className="py-2 px-3 border text-center bg-green-100">O-</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">O+</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">A-</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">A+</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">B-</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">B+</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
-                        </tr>
-                        <tr>
-                          <td className="py-2 px-3 border font-semibold">O+</td>
-                          <td className="py-2 px-3 border text-center bg-green-100">O-</td>
-                          <td className="py-2 px-3 border text-center bg-green-100">O+</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">A-</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">A+</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">B-</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">B+</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
-                          <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
-                        </tr>
-
-                        <tr>
-                                            <td className="py-2 px-3 border font-semibold">A-</td>
-                                            <td className="py-2 px-3 border text-center bg-green-100">O-</td>
-                                            <td className="py-2 px-3 border text-center bg-red-100">O+</td>
-                                            <td className="py-2 px-3 border text-center bg-green-100">A-</td>
-                                            <td className="py-2 px-3 border text-center bg-red-100">A+</td>
-                                            <td className="py-2 px-3 border text-center bg-red-100">B-</td>
-                                            <td className="py-2 px-3 border text-center bg-red-100">B+</td>
-                                            <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
-                                            <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
-                                          </tr>
-                                          <tr>
-                                            <td className="py-2 px-3 border font-semibold">A+</td>
-                                            <td className="py-2 px-3 border text-center bg-green-100">O-</td>
-                                            <td className="py-2 px-3 border text-center bg-green-100">O+</td>
-                                            <td className="py-2 px-3 border text-center bg-green-100">A-</td>
-                                            <td className="py-2 px-3 border text-center bg-green-100">A+</td>
-                                            <td className="py-2 px-3 border text-center bg-red-100">B-</td>
-                                            <td className="py-2 px-3 border text-center bg-red-100">B+</td>
-                                            <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
-                                            <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
-                                                              </tr>
-                                                              <tr>
-                                                                <td className="py-2 px-3 border font-semibold">B-</td>
-                                                                <td className="py-2 px-3 border text-center bg-green-100">O-</td>
-                                                                <td className="py-2 px-3 border text-center bg-red-100">O+</td>
-                                                                <td className="py-2 px-3 border text-center bg-red-100">A-</td>
-                                                                <td className="py-2 px-3 border text-center bg-red-100">A+</td>
-                                                                <td className="py-2 px-3 border text-center bg-green-100">B-</td>
-                                                                <td className="py-2 px-3 border text-center bg-red-100">B+</td>
-                                                                <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
-                                                                <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
-                                                              </tr>
-                                                              <tr>
-                                                                <td className="py-2 px-3 border font-semibold">B+</td>
-                                                                <td className="py-2 px-3 border text-center bg-green-100">O-</td>
-                                                                <td className="py-2 px-3 border text-center bg-green-100">O+</td>
-                                                                <td className="py-2 px-3 border text-center bg-red-100">A-</td>
-                                                                <td className="py-2 px-3 border text-center bg-red-100">A+</td>
-                                                                <td className="py-2 px-3 border text-center bg-green-100">B-</td>
-                                                                <td className="py-2 px-3 border text-center bg-green-100">B+</td>
-                                                                <td className="py-2 px-3 border text-center bg-red-100">AB-</td>
-                                                                <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
-                                                              </tr>
-                                                              <tr>
-                                                                                  <td className="py-2 px-3 border font-semibold">AB-</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">O-</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-red-100">O+</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">A-</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-red-100">A+</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">B-</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-red-100">B+</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">AB-</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-red-100">AB+</td>
-                                                                                </tr>
-                                                                                <tr>
-                                                                                  <td className="py-2 px-3 border font-semibold">AB+</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">O-</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">O+</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">A-</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">A+</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">B-</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">B+</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">AB-</td>
-                                                                                  <td className="py-2 px-3 border text-center bg-green-100">AB+</td>
-                                                                                </tr>
-                                                                              </tbody>
-                                                                            </table>
-                                                                          </div>
-                                                                          <p className="mt-2 text-sm text-gray-600">Green cells indicate compatible blood types. AB+ recipients can receive from any donor, while O- donors can donate to any recipient.</p>
+                                                                        <h3 className="font-semibold mb-2">ABO Blood Type Compatibility Chart:</h3>
+                                                                        <div className="overflow-x-auto">
+                                                                          <table className="min-w-full bg-white border mt-2">
+                                                                            <thead className="bg-gray-100">
+                                                                              <tr>
+                                                                                <th className="py-2 px-3 border">Recipient ABO Type</th>
+                                                                                <th className="py-2 px-3 border text-center" colSpan="4">Compatible Donor ABO Types</th>
+                                                                              </tr>
+                                                                            </thead>
+                                                                            <tbody>
+                                                                              <tr>
+                                                                                <td className="py-2 px-3 border font-semibold">O</td>
+                                                                                <td className="py-2 px-3 border text-center bg-green-100">O</td>
+                                                                                <td className="py-2 px-3 border text-center bg-red-100">A</td>
+                                                                                <td className="py-2 px-3 border text-center bg-red-100">B</td>
+                                                                                <td className="py-2 px-3 border text-center bg-red-100">AB</td>
+                                                                              </tr>
+                                                                              <tr>
+                                                                                <td className="py-2 px-3 border font-semibold">A</td>
+                                                                                <td className="py-2 px-3 border text-center bg-green-100">O</td>
+                                                                                <td className="py-2 px-3 border text-center bg-green-100">A</td>
+                                                                                <td className="py-2 px-3 border text-center bg-red-100">B</td>
+                                                                                <td className="py-2 px-3 border text-center bg-red-100">AB</td>
+                                                                              </tr>
+                                                                              <tr>
+                                                                                <td className="py-2 px-3 border font-semibold">B</td>
+                                                                                <td className="py-2 px-3 border text-center bg-green-100">O</td>
+                                                                                <td className="py-2 px-3 border text-center bg-red-100">A</td>
+                                                                                <td className="py-2 px-3 border text-center bg-green-100">B</td>
+                                                                                <td className="py-2 px-3 border text-center bg-red-100">AB</td>
+                                                                              </tr>
+                                                                              <tr>
+                                                                                <td className="py-2 px-3 border font-semibold">AB</td>
+                                                                                <td className="py-2 px-3 border text-center bg-green-100">O</td>
+                                                                                <td className="py-2 px-3 border text-center bg-green-100">A</td>
+                                                                                <td className="py-2 px-3 border text-center bg-green-100">B</td>
+                                                                                <td className="py-2 px-3 border text-center bg-green-100">AB</td>
+                                                                              </tr>
+                                                                            </tbody>
+                                                                          </table>
                                                                         </div>
+                                                                        <p className="mt-2 text-sm text-gray-600">
+                                                                          Green cells indicate ABO-compatible types. Rhesus factor warnings are shown separately.
+                                                                          AB recipients can receive from any ABO type, while O recipients can only receive from O donors.
+                                                                        </p>
                                                                       </div>
                                                                     )}
       
