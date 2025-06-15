@@ -347,6 +347,7 @@ const generatePDF = () => {
                 <th>Rank</th>
                 <th>ID</th>
                 <th>Name</th>
+                <th>Age</th>
                 <th>Date Added</th>
                 <th>Status</th>
                 <th>Blood Type</th>
@@ -362,6 +363,7 @@ const generatePDF = () => {
                   <td>${index + 1}</td>
                   <td>${result.id}</td>
                   <td>${result.name}</td>
+                  <td>${result.age}</td>
                   <td>${result.dateAdded.toLocaleDateString()}</td>
                   <td class="${result.status <= 2 ? 'priority-high' : result.status <= 4 ? 'priority-medium' : 'priority-low'}">${result.status}</td>
                   <td>${result.bloodType || "Unknown"}</td>
