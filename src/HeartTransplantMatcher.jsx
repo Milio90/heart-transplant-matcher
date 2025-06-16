@@ -2,6 +2,15 @@
 import React, { useState, useRef } from 'react';
 import ExcelJS from 'exceljs';
 
+const escapeHTML = (str) => {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+           .replace(/"/g, '&quot;')
+           .replace(/'/g, '&#039;');
+};
+
 const HeartTransplantMatcher = () => {
   const [recipients, setRecipients] = useState([]);
   const [donor, setDonor] = useState({
@@ -335,11 +344,11 @@ const generatePDF = () => {
         </head>
         <body>
           <h1>Heart Transplant Match Report</h1>
-          <p><strong>Donor:</strong> ${donor.name}</p>
-          <p><strong>Details:</strong> ${donor.gender}, Age: ${donor.age}, Blood Type: ${donor.bloodType}</p>
-          <p><strong>Physical:</strong> Height: ${donor.height}cm, Weight: ${donor.weight}kg</p>
-          <p><strong>Donor PHM:</strong> ${matchResults[0].donorPHM.toFixed(2)}g</p>
-          <p><strong>Generated:</strong> ${new Date().toLocaleDateString()}</p>
+          <p><strong>Donor:</strong> ${escapeHTML(donor.name)}</p>
+          <p><strong>Details:</strong> ${escapeHTML(donor.gender)}, Age: ${escapeHTML(donor.age)}, Blood Type: ${escapeHTML(donor.bloodType)}</p>
+          <p><strong>Physical:</strong> Height: ${escapeHTML(donor.height)}cm, Weight: ${escapeHTML(donor.weight)}kg</p>
+          <p><strong>Donor PHM:</strong> ${escapeHTML(matchResults[0].donorPHM.toFixed(2))}g</p>
+          <p><strong>Generated:</strong> ${escapeHTML(new Date().toLocaleDateString())}</p>
           
           <table>
             <thead>
